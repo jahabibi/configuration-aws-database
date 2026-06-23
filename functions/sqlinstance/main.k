@@ -10,15 +10,36 @@ _dxr = option("params").dxr # desired composite resource
 dcds = option("params").dcds # desired composed resources
 
 params = oxr.spec.parameters
-providerConfigRefName = params.providerConfigName or None
+
+# reclaimPolicy (PV vocabulary) -> Crossplane management policies; size intent
+# -> instance class. The consumer contract speaks Kubernetes/capacity; only L3
+# speaks Crossplane machinery / provider instance classes.
+_reclaimPolicy = params?.reclaimPolicy or "Delete"
+_managementPolicies = ["Create", "Observe", "Update", "LateInitialize"] if _reclaimPolicy == "Retain" else ["*"]
+_providerConfigName = params?.overrides?.providerConfigName or "default"
+_sizeToInstanceClass = {small = "db.t3.micro", medium = "db.t3.medium", large = "db.t3.large"}
+_instanceClass = _sizeToInstanceClass[params?.size or "small"]
+
+# Inter-domain wiring: resolve the referenced Network from its published status
+# contract (Network.status) instead of reaching around it with provider-MR
+# label selectors. SQLInstance is used standalone (no composing parent to
+# inject placement), so per the layered design the L3 function fetches the
+# Network XR via extra-resources, keyed by networkRef.id (== the Network name),
+# and reads the AZ-structured zones[] + the default securityGroupId.
+_extra = option("params").extraResources or {}
+_networkXRs = _extra?["network"] or []
+_networkXR = _networkXRs[0] if len(_networkXRs) > 0 else {}
+_netStatus = _networkXR?.Resource?.status or _networkXR?.status or {}
+_zones = _netStatus?.zones or []
+_privateSubnetIds = [z.privateSubnetId for z in _zones if z?.privateSubnetId]
+_securityGroupId = _netStatus?.securityGroupId or ""
 
 _defaults = {
-    managementPolicies = params.managementPolicies or ["*"]
-    if providerConfigRefName:
-        providerConfigRef = {
-            kind = "ProviderConfig"
-            name = providerConfigRefName
-        }
+    managementPolicies = _managementPolicies
+    providerConfigRef = {
+        kind = "ProviderConfig"
+        name = _providerConfigName
+    }
     forProvider.region = params.region
 }
 
@@ -27,14 +48,27 @@ _metadata = lambda name: str -> any {
 }
 
 _items = [
+    # Request the referenced Network XR so we can read its published status
+    # (the inter-domain contract). Resolved by name == networkRef.id.
+    {
+        apiVersion: "meta.krm.kcl.dev/v1alpha1"
+        kind: "ExtraResources"
+        requirements: {
+            "network": {
+                apiVersion: "aws.platform.upbound.io/v1alpha1"
+                kind: "Network"
+                matchName: params.networkRef.id
+            }
+        }
+    }
     rdsv1beta1.SubnetGroup{
         metadata: _metadata("compositeSQLInstanceDbSubnetGroup")
         spec = _defaults | {
             forProvider: {
                 description = "An excellent formation of subnetworks."
-                subnetIdSelector.matchLabels = {
-                    "networks.aws.platform.upbound.io/network-id" = params.networkRef.id
-                }
+                # Explicit private subnet IDs from Network.status.zones[]
+                # (resolved via extra-resources); no MR-label coupling.
+                subnetIds = _privateSubnetIds
             }
         }
     }
@@ -44,16 +78,15 @@ _items = [
             forProvider: {
                 dbName = "upbound"
                 dbSubnetGroupNameSelector.matchControllerRef = True
-                instanceClass = "db.t3.micro"
+                instanceClass = _instanceClass
                 publiclyAccessible = False
                 skipFinalSnapshot = True
                 username = "masteruser"
                 engine = params.engine
                 engineVersion = params.engineVersion
                 allocatedStorage = params.storageGB
-                vpcSecurityGroupIdSelector.matchLabels = {
-                    "networks.aws.platform.upbound.io/network-id" = params.networkRef.id
-                }
+                # Default security group from Network.status.securityGroupId.
+                vpcSecurityGroupIds = [_securityGroupId] if _securityGroupId else []
                 autoGeneratePassword = params.autoGeneratePassword
                 passwordSecretRef = {
                     name = params.passwordSecretRef.name
@@ -81,4 +114,16 @@ _items = [
             data: {}
     }
 ]
+
+# Structured status (non-sensitive; credentials go to the connection secret).
+_dxr = _dxr | {
+    status: {
+        if _ocds?["RDSInstanceSmall"]?.Resource?.status?.atProvider?.endpoint:
+            endpoint = _ocds["RDSInstanceSmall"].Resource.status.atProvider.endpoint
+        if _ocds?["RDSInstanceSmall"]?.Resource?.status?.atProvider?.address:
+            host = _ocds["RDSInstanceSmall"].Resource.status.atProvider.address
+    }
+}
+_items += [_dxr]
+
 items = _items

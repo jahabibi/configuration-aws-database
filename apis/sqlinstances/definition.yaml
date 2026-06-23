@@ -1,14 +1,14 @@
 apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
-  name: sqlinstances.aws.platform.upbound.io
+  name: datastores.aws.platform.upbound.io
 spec:
   group: aws.platform.upbound.io
   names:
     categories:
     - crossplane
-    kind: SQLInstance
-    plural: sqlinstances
+    kind: DataStore
+    plural: datastores
   scope: Namespaced
   versions:
   - name: v1alpha1
@@ -16,73 +16,107 @@ spec:
     referenceable: true
     schema:
       openAPIV3Schema:
-          type: object
-          properties:
-            spec:
-              type: object
-              properties:
-                parameters:
-                  type: object
-                  properties:
-                    region:
-                      type: string
-                      description: Region is the region you'd like your resource to be created in.
-                    managementPolicies:
-                      description: ManagementPolicies for AWS EC2 resources. Defaults to ["*"] which includes all operations (Create, Observe, Update, Delete, LateInitialize). To orphan resources on deletion, use ["Create", "Observe", "Update", "LateInitialize"].
-                      type: array
-                      items:
+        type: object
+        description: >-
+          DataStore provisions a managed relational database. The provider
+          implementation (e.g. RDS) and the instance sizing are L3 details, not
+          leaked API surface — "CreateDatabase", not "CreateRDSInstance".
+        properties:
+          spec:
+            type: object
+            properties:
+              parameters:
+                type: object
+                description: DataStore configuration parameters.
+                properties:
+                  region:
+                    type: string
+                    description: Cloud region, e.g. us-west-2.
+                  engine:
+                    type: string
+                    enum: [postgres, mariadb]
+                    description: >-
+                      Database engine. The platform implements this in L3; adding
+                      an engine (e.g. aurora-postgresql) is an additive enum value,
+                      not a new API.
+                  engineVersion:
+                    type: string
+                    description: Database engine version.
+                  size:
+                    type: string
+                    enum: [small, medium, large]
+                    default: small
+                    description: >-
+                      Capacity intent. The composition maps this to the current
+                      right instance class (an L3 concern); consumers express a
+                      size, never a provider instance class.
+                  storageGB:
+                    type: integer
+                    description: Allocated storage in GiB.
+                  reclaimPolicy:
+                    type: string
+                    enum: [Delete, Retain]
+                    default: Delete
+                    description: >-
+                      Outcome intent (Kubernetes PersistentVolume vocabulary).
+                      Retain leaves the database in place when this composite is
+                      deleted. The mapping to Crossplane management policies is
+                      owned by the composition; this field does not echo Crossplane
+                      machinery.
+                  networkRef:
+                    type: object
+                    description: >-
+                      Reference, by platform id, to the Network this database is
+                      placed in. Resolved in L3 (extra-resources) from the
+                      Network's published status — private subnets + security group.
+                    properties:
+                      id:
                         type: string
-                        enum:
-                          - "*"
-                          - Create
-                          - Observe
-                          - Update
-                          - Delete
-                          - LateInitialize
-                        default: "*"
-                    providerConfigName:
-                      description: Crossplane ProviderConfig to use for provisioning this resources
-                      type: string
-                      default: default
-                    engine:
-                      type: string
-                      description: This RDS Instance engine, see https://docs.aws.amazon.com/AmazonRDS/latest/APIReference/API_CreateDBInstance.html for possible values.
-                      enum:
-                        - postgres
-                        - mariadb
-                    engineVersion:
-                      type: string
-                      description: This RDS Instance engine version, see https://docs.aws.amazon.com/AmazonRDS/latest/APIReference/API_CreateDBInstance.html for possible values.
-                    storageGB:
-                      type: integer
-                    passwordSecretRef:
-                      type: object
-                      description: "A reference to the Secret object containing database password"
-                      properties:
-                        name:
-                          type: string
-                        key:
-                          type: string
-                      required:
-                        - name
-                        - key
-                    autoGeneratePassword:
-                      type: boolean
-                    networkRef:
-                      type: object
-                      description: "A reference to the Network object that this database should be connected to."
-                      properties:
-                        id:
-                          type: string
-                          description: ID of the Network object this ref points to.
-                      required:
-                        - id
-                  required:
-                    - region
-                    - engine
-                    - engineVersion
-                    - storageGB
-                    - networkRef
-                    - passwordSecretRef
-              required:
-                - parameters
+                        description: Platform id of the Network (its metadata name).
+                    required:
+                    - id
+                  passwordSecretRef:
+                    type: object
+                    description: Reference to the Secret holding the database password.
+                    properties:
+                      name:
+                        type: string
+                      key:
+                        type: string
+                    required:
+                    - name
+                    - key
+                  autoGeneratePassword:
+                    type: boolean
+                    description: Whether to auto-generate the database password.
+                  overrides:
+                    type: object
+                    description: >-
+                      Bounded escape hatch with an explicit support boundary.
+                    properties:
+                      providerConfigName:
+                        type: string
+                        description: >-
+                          Crossplane ProviderConfig for account/credential
+                          selection. Defaults to "default".
+                required:
+                - region
+                - engine
+                - engineVersion
+                - storageGB
+                - networkRef
+                - passwordSecretRef
+            required:
+            - parameters
+          status:
+            type: object
+            description: DataStore status published for consumers / observability.
+            properties:
+              endpoint:
+                type: string
+                description: Connection endpoint (host:port).
+              host:
+                type: string
+                description: Database host address.
+        required:
+        - spec

@@ -2,12 +2,42 @@ import models.io.upbound.awsm.rds.v1beta1 as rdsv1beta1
 import models.io.upbound.dev.meta.v1alpha1 as metav1alpha1
 import models.io.upbound.platform.aws.v1alpha1 as platformawsv1alpha1
 
+# Stand-in for the referenced Network's published status contract, supplied as
+# an extra resource so the composition resolves placement from Network.status
+# (zones[] + securityGroupId) — exercising the same extra-resources path the
+# function uses in-cluster. Untyped dict on purpose: it carries v3 status fields
+# the (old) resolved Network model does not yet declare.
+_networkExtra = {
+    apiVersion = "aws.platform.upbound.io/v1alpha1"
+    kind = "Network"
+    metadata = {
+        name = "configuration-aws-database"
+        namespace = "default"
+    }
+    status = {
+        networkId = "vpc-0test"
+        securityGroupId = "sg-0test"
+        zones = [
+            {
+                name = "us-west-2a"
+                publicSubnetId = "subnet-pub-a"
+                privateSubnetId = "subnet-priv-a"
+            }
+            {
+                name = "us-west-2b"
+                publicSubnetId = "subnet-pub-b"
+                privateSubnetId = "subnet-priv-b"
+            }
+        ]
+    }
+}
+
 _items = [
     metav1alpha1.CompositionTest{
         metadata.name: "TestMariaDB"
         spec = {
             assertResources: [
-                platformawsv1alpha1.SQLInstance{
+                platformawsv1alpha1.DataStore{
                     metadata = {
                         name = "configuration-aws-database-mariadb"
                         namespace = "default"
@@ -43,7 +73,7 @@ _items = [
                                 apiVersion = "aws.platform.upbound.io/v1alpha1"
                                 blockOwnerDeletion = True
                                 controller = True
-                                kind = "SQLInstance"
+                                kind = "DataStore"
                                 name = "configuration-aws-database-mariadb"
                                 uid = ""
                             }
@@ -68,11 +98,9 @@ _items = [
                             region = "us-west-2"
                             skipFinalSnapshot = True
                             username = "masteruser"
-                            vpcSecurityGroupIdSelector = {
-                                matchLabels = {
-                                    "networks.aws.platform.upbound.io/network-id" = "configuration-aws-database"
-                                }
-                            }
+                            vpcSecurityGroupIds = [
+                                "sg-0test"
+                            ]
                         }
                         writeConnectionSecretToRef = {
                             name = "configuration-aws-database-mariadb-sql"
@@ -93,7 +121,7 @@ _items = [
                                 apiVersion = "aws.platform.upbound.io/v1alpha1"
                                 blockOwnerDeletion = True
                                 controller = True
-                                kind = "SQLInstance"
+                                kind = "DataStore"
                                 name = "configuration-aws-database-mariadb"
                                 uid = ""
                             }
@@ -103,15 +131,15 @@ _items = [
                         forProvider = {
                             description = "An excellent formation of subnetworks."
                             region = "us-west-2"
-                            subnetIdSelector = {
-                                matchLabels = {
-                                    "networks.aws.platform.upbound.io/network-id" = "configuration-aws-database"
-                                }
-                            }
+                            subnetIds = [
+                                "subnet-priv-a"
+                                "subnet-priv-b"
+                            ]
                         }
                     }
                 }
             ]
+            extraResources: [_networkExtra]
             compositionPath: "apis/sqlinstances/composition.yaml"
             xrdPath: "apis/sqlinstances/definition.yaml"
             xrPath: "examples/sqlinstance/mariadb-xr.yaml"
@@ -123,7 +151,7 @@ _items = [
         metadata.name: "TestPostgres"
         spec = {
             assertResources: [
-                platformawsv1alpha1.SQLInstance{
+                platformawsv1alpha1.DataStore{
                     metadata = {
                         name = "configuration-aws-database-postgres"
                         namespace = "default"
@@ -158,7 +186,7 @@ _items = [
                                 apiVersion = "aws.platform.upbound.io/v1alpha1"
                                 blockOwnerDeletion = True
                                 controller = True
-                                kind = "SQLInstance"
+                                kind = "DataStore"
                                 name = "configuration-aws-database-postgres"
                                 uid = ""
                             }
@@ -182,11 +210,9 @@ _items = [
                             region = "us-west-2"
                             skipFinalSnapshot = True
                             username = "masteruser"
-                            vpcSecurityGroupIdSelector = {
-                                matchLabels = {
-                                    "networks.aws.platform.upbound.io/network-id" = "configuration-aws-database"
-                                }
-                            }
+                            vpcSecurityGroupIds = [
+                                "sg-0test"
+                            ]
                         }
                         writeConnectionSecretToRef = {
                             name = "configuration-aws-database-postgres-sql"
@@ -207,7 +233,7 @@ _items = [
                                 apiVersion = "aws.platform.upbound.io/v1alpha1"
                                 blockOwnerDeletion = True
                                 controller = True
-                                kind = "SQLInstance"
+                                kind = "DataStore"
                                 name = "configuration-aws-database-postgres"
                                 uid = ""
                             }
@@ -217,15 +243,15 @@ _items = [
                         forProvider = {
                             description = "An excellent formation of subnetworks."
                             region = "us-west-2"
-                            subnetIdSelector = {
-                                matchLabels = {
-                                    "networks.aws.platform.upbound.io/network-id" = "configuration-aws-database"
-                                }
-                            }
+                            subnetIds = [
+                                "subnet-priv-a"
+                                "subnet-priv-b"
+                            ]
                         }
                     }
                 }
             ]
+            extraResources: [_networkExtra]
             compositionPath: "apis/sqlinstances/composition.yaml"
             xrdPath: "apis/sqlinstances/definition.yaml"
             xrPath: "examples/sqlinstance/postgres-xr.yaml"

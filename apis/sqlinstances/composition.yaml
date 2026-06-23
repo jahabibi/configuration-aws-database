@@ -1,11 +1,11 @@
 apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
-  name: sqlinstances.aws.platform.upbound.io
+  name: datastores.aws.platform.upbound.io
 spec:
   compositeTypeRef:
     apiVersion: aws.platform.upbound.io/v1alpha1
-    kind: SQLInstance
+    kind: DataStore
   mode: Pipeline
   pipeline:
   - functionRef:

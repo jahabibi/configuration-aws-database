@@ -10,7 +10,7 @@ _items = [
             crossplane.version = "2.0.2-up.5"
             defaultConditions: ["Ready"]
             manifests: [
-                platformawsv1alpha1.SQLInstance{
+                platformawsv1alpha1.DataStore{
                     metadata = {
                         name = "configuration-aws-database-mariadb"
                         namespace = "default"
@@ -32,7 +32,7 @@ _items = [
                         }
                     }
                 }
-                platformawsv1alpha1.SQLInstance{
+                platformawsv1alpha1.DataStore{
                     metadata = {
                         name = "configuration-aws-database-postgres"
                         namespace = "default"
@@ -63,7 +63,6 @@ _items = [
                     }
                     spec = {
                         parameters = {
-                            id = "configuration-aws-database"
                             region = "us-west-2"
                         }
                     }
