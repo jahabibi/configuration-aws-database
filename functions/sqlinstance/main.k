@@ -58,6 +58,10 @@ _items = [
                 apiVersion: "aws.platform.upbound.io/v1alpha1"
                 kind: "Network"
                 matchName: params.networkRef.id
+                # Network is a namespaced XR; matchNamespace scopes the lookup.
+                # Requires function-kcl >= v0.11.6 (matchNamespace support) — older
+                # runtimes silently drop it, querying cluster-scoped and finding nothing.
+                matchNamespace: oxr.metadata.namespace
             }
         }
     }
